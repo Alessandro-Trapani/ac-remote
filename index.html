@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AC">
+<meta name="theme-color" content="#111214">
+<title>AC Remote</title>
+<!-- Talks to the ESP32 through ntfy.sh, so it works from anywhere. The topic is the only key: it is typed
+     in once and kept in this browser's storage. This file contains no secrets. -->
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--line:#e3e5e8;--text:#15171a;--dim:#6b7078;--accent:#2f7cf6;--on:#1fa45a;--off:#d7dadf;--warn:#d9822b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111214;--card:#1b1d21;--line:#2a2d33;--text:#eef0f3;--dim:#8d939c;--accent:#4b8dff;--on:#22b866;--off:#2d3138;--warn:#e89a45}}
+:root[data-theme="dark"]{--bg:#111214;--card:#1b1d21;--line:#2a2d33;--text:#eef0f3;--dim:#8d939c;--accent:#4b8dff;--on:#22b866;--off:#2d3138;--warn:#e89a45}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px)}
+main{max-width:480px;margin:0 auto}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+h1{font-size:22px;margin:0}
+.small{font-size:13px;color:var(--dim)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--off);margin-right:6px;vertical-align:1px}
+.dot.live{background:var(--on)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;margin:0 0 10px}
+.sensors{display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+.sensors b{display:block;font-size:22px;font-weight:600}
+.power{width:100%;border:0;border-radius:14px;padding:18px;font-size:20px;font-weight:700;background:var(--off);color:var(--text)}
+.power.on{background:var(--on);color:#fff}
+.seg{display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:4px;margin-top:12px}
+.seg button{flex:1;min-width:0;border:0;background:none;color:var(--dim);padding:9px 2px;border-radius:8px;font-size:14px}
+.seg button.sel{background:var(--accent);color:#fff}
+.temp{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+.temp b{font-size:44px;font-weight:600}
+.round{width:52px;height:52px;border-radius:50%;border:0;background:var(--bg);color:var(--text);font-size:26px}
+.btns{display:flex;gap:8px}
+.btn{flex:1;border:0;border-radius:10px;padding:12px;background:var(--bg);color:var(--text);font-size:15px;font-weight:600}
+.btn.primary{background:var(--accent);color:#fff}
+input{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--bg);color:var(--text);font-size:16px}
+.note{color:var(--warn);font-size:13px;margin-top:8px;min-height:18px}
+.pending{opacity:.6}
+#setup{display:none}
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+  <div><h1>Air conditioner</h1><div class="small"><span class="dot" id="dot"></span><span id="conn">Connecting…</span></div></div>
+</div>
+
+<section class="card" id="setup">
+  <h2>Set up</h2>
+  <div class="small" style="margin-bottom:10px">Enter <b>NTFY_TOPIC</b> from secrets.h. It stays in this browser only.</div>
+  <input id="topicIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ac-…">
+  <div class="btns" style="margin-top:10px"><button class="btn primary" id="saveTopic">Save</button></div>
+</section>
+
+<div id="app">
+<section class="card sensors">
+  <div><b id="sT">--</b><span class="small">°C</span></div>
+  <div><b id="sH">--</b><span class="small">% humidity</span></div>
+  <div><b id="sC">--</b><span class="small" id="sCl">ppm CO2</span></div>
+</section>
+
+<section class="card" id="acCard">
+  <button class="power" id="power">--</button>
+  <div class="seg" id="modes"></div>
+  <div class="temp"><button class="round" id="minus" aria-label="Cooler">−</button><b id="temp">--°</b><button class="round" id="plus" aria-label="Warmer">+</button></div>
+  <div class="seg" id="fans"></div>
+  <div class="note" id="note"></div>
+</section>
+
+<section class="card">
+  <h2>Presence</h2>
+  <div class="btns"><button class="btn" data-cmd="away">I'm away</button><button class="btn" data-cmd="home">I'm home</button><button class="btn" data-cmd="resume">Resume</button></div>
+  <div class="small" id="flags" style="margin-top:10px"></div>
+</section>
+
+<section class="card">
+  <div class="small" id="last">Waiting for the ESP32…</div>
+  <div class="small" style="margin-top:8px"><a href="#" id="forget" style="color:var(--dim)">Change topic</a></div>
+</section>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const MODES = {auto:"Auto", cool:"Cool", heat:"Heat", dry:"Dry", fan:"Fan"};
+const FANS = {auto:"Auto", low:"Low", medium:"Med", high:"High", max:"Max"};
+let topic = "", st = null, es = null, tTimer = null, pendingUntil = 0;
+
+function load(k){try{return localStorage.getItem(k)||""}catch(e){return ""}}
+function save(k,v){try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}}
+
+// A setup link like .../#topic=ac-xxxx saves the topic once, then the address is cleaned up.
+const m = location.hash.match(/topic=([\w-]+)/);
+if (m) { save("topic", m[1]); history.replaceState(null, "", location.pathname); }
+topic = load("topic");
+
+function seg(el, map, onPick){ el.innerHTML=""; for (const [v,l] of Object.entries(map)) {
+  const b=document.createElement("button"); b.textContent=l; b.dataset.v=v; b.onclick=()=>onPick(v); el.appendChild(b) } }
+function sel(el, v){ [...el.children].forEach(b=>b.classList.toggle("sel", b.dataset.v===v)) }
+
+async function send(cmd){
+  pendingUntil = Date.now() + 15000;
+  $("acCard").classList.add("pending");
+  $("note").textContent = "Sending…";
+  try {
+    const r = await fetch("https://ntfy.sh/" + topic, {method:"POST", body:cmd});
+    if (!r.ok) throw new Error(r.status);
+  } catch (e) { $("note").textContent = "Couldn't send (no internet?)"; $("acCard").classList.remove("pending"); pendingUntil = 0; }
+}
+
+function render(){
+  if (!st) return;
+  const a = st.ac;
+  $("power").textContent = a.power ? "ON" : "OFF";
+  $("power").classList.toggle("on", a.power);
+  sel($("modes"), a.mode); sel($("fans"), a.fan);
+  if (!tTimer) $("temp").textContent = a.temp + "°";
+  const s = st.sensors || {};
+  $("sT").textContent = s.temp ?? "--";
+  $("sH").textContent = s.humidity ?? "--";
+  $("sC").textContent = s.co2 ?? "--";
+  $("sCl").textContent = s.co2Estimated ? "ppm CO2 (est.)" : "ppm CO2";
+  const f = [];
+  if (st.away) f.push("Away: automations paused");
+  else if (st.override) f.push("Manual: automations paused until Resume");
+  if (st.thermostat && st.thermostat.enabled) f.push(`Thermostat: ${st.thermostat.mode} to ${st.thermostat.target}°`);
+  $("flags").textContent = f.join(" · ");
+  $("last").textContent = `Last: ${st.lastEvent}  ·  ESP32 time ${st.time}`;
+  if (st.note) $("note").textContent = st.note;
+}
+
+function onStatus(msg){
+  let d; try { d = JSON.parse(msg) } catch(e) { return }
+  st = d; pendingUntil = 0;
+  $("acCard").classList.remove("pending");
+  $("note").textContent = d.note || "";
+  render();
+}
+
+// Server-sent events: the newest status arrives at once, then every update live.
+function connect(){
+  if (es) es.close();
+  es = new EventSource(`https://ntfy.sh/${topic}-status/sse?since=latest`);
+  es.onopen = () => { $("dot").classList.add("live"); $("conn").textContent = "Live"; };
+  es.onmessage = e => { try { const m = JSON.parse(e.data); if (m.event === "message") onStatus(m.message) } catch(_){} };
+  es.onerror = () => { $("dot").classList.remove("live"); $("conn").textContent = "Reconnecting…"; };
+}
+
+setInterval(() => { if (pendingUntil && Date.now() > pendingUntil) {
+  pendingUntil = 0; $("acCard").classList.remove("pending");
+  $("note").textContent = "No answer from the ESP32. Is it powered and on Wi-Fi?"; } }, 1000);
+
+seg($("modes"), MODES, v => { if (st) { st.ac.mode = v; st.ac.power = true; render() } send(v) });
+seg($("fans"), FANS, v => { if (st) { st.ac.fan = v; render() } send("fan " + v) });
+$("power").onclick = () => { const on = !(st && st.ac.power); if (st) { st.ac.power = on; render() } send(on ? "on" : "off") };
+function bump(d){
+  if (!st) return;
+  st.ac.temp = Math.min(31, Math.max(16, st.ac.temp + d));
+  $("temp").textContent = st.ac.temp + "°";
+  clearTimeout(tTimer);
+  tTimer = setTimeout(() => { tTimer = null; send(String(st.ac.temp)) }, 800);  // one command after the last tap
+}
+$("minus").onclick = () => bump(-0.5);
+$("plus").onclick = () => bump(0.5);
+document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => send(b.dataset.cmd));
+
+function showSetup(on){ $("setup").style.display = on ? "block" : "none"; $("app").style.display = on ? "none" : "block" }
+$("saveTopic").onclick = () => { const t = $("topicIn").value.trim(); if (!/^[\w-]{6,64}$/.test(t)) { $("topicIn").focus(); return }
+  topic = t; save("topic", t); showSetup(false); connect(); };
+$("forget").onclick = e => { e.preventDefault(); save("topic", ""); topic = ""; if (es) es.close(); showSetup(true) };
+
+if (topic) { showSetup(false); connect() } else showSetup(true);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && topic && (!es || es.readyState === 2)) connect() });
+</script>
+</body>
+</html>
