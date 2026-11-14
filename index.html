@@ -169,7 +169,8 @@ $("minus").onclick = () => bump(-0.5);
 $("plus").onclick = () => bump(0.5);
 document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => send(b.dataset.cmd));
 
-function showSetup(on){ $("setup").style.display = on ? "block" : "none"; $("app").style.display = on ? "none" : "block" }
+function showSetup(on){ $("setup").style.display = on ? "block" : "none"; $("app").style.display = on ? "none" : "block";
+  if (on) { $("dot").classList.remove("live"); $("conn").textContent = "Not set up" } }
 $("saveTopic").onclick = () => { const t = $("topicIn").value.trim(); if (!/^[\w-]{6,64}$/.test(t)) { $("topicIn").focus(); return }
   topic = t; save("topic", t); showSetup(false); connect(); };
 $("forget").onclick = e => { e.preventDefault(); save("topic", ""); topic = ""; if (es) es.close(); showSetup(true) };
